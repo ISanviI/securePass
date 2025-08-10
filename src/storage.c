@@ -4,7 +4,9 @@
 #include <stdlib.h>
 #include "storage.h"
 
-#define DB_FILE "securepass.db"
+#ifndef DB_FILE
+#define DB_FILE "/var/lib/securepass/securepass.db"
+#endif
 
 void save_password(const char *name, const char *password)
 {

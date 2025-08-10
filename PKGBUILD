@@ -1,5 +1,9 @@
 # PKGBUILD (Alternate - makepkg)
 # To create a .pkg.tar.zst for public installation
+# Usage: makepkg -si
+
+# Difference between yay and pacman package building.
+
 pkgname=securePass
 pkgver=1.0
 pkgrel=1
