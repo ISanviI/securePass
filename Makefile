@@ -1,5 +1,7 @@
 # Makefile
 # TODO - chown root:securepass securepass.db 	chmod 600 securepass.db
+# // Get rid of storage.c as to remove securePass.db
+# // Segregate the authentication and storage logic into separate files from auth.c.
 # // Encrypt with AES-256-GCM using a random IV
 # // Store IV + ciphertext in the DB
 # // Key comes from secure source (OS keyring, KDF)
@@ -46,13 +48,14 @@ all:
 # Example: 765 = owner can read/write/execute, group can read/write, others can read/execute. 4 = read
 # /etc directory is for system configuration files, so it should not be writable by non-root users.
 # pam folder is purely for authentication.
-# Package installation only installs the package's compiled binary file and not the whole project unless specified.
+# `all` command only builds the binary file.
+# `install` command installs the binary file and the PAM configuration file to their respective directories, not the whole project unless specified.
 install:
 	install -Dm755 $(TARGET) "$(DESTDIR)/usr/bin/$(TARGET)" 
 	install -Dm644 $(PAM_CONFIG) "$(DESTDIR)/etc/pam.d/$(TARGET)"
 uninstall:
 	rm -f "$(DESTDIR)/usr/bin/$(TARGET)"
-	rm -f /etc/pam.d/$(TARGET)
+	rm -f "$(DESTDIR)/etc/pam.d/$(TARGET)"
 
 clean:
 	rm -f $(TARGET)

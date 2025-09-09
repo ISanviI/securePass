@@ -44,7 +44,8 @@ int authenticate()
   return retval == PAM_SUCCESS ? 1 : 0;
 }
 
-/* Utility: hex encode / decode */
+/* Convert binary cryptographic data (like salts and hashes) to/from human-readable hex strings for storage in configuration files. */
+/* Trying to write binary data containing "null" bytes into a text file, it would break at the first null character */
 static void hex_encode(const unsigned char *in, size_t len, char *out)
 {
   static const char hex[] = "0123456789abcdef";
@@ -77,7 +78,8 @@ static int hex_decode(const char *hexstr, unsigned char *out, size_t outlen)
   return 0;
 }
 
-/* Constant-time comparison */
+/* Compares two byte arrays in exactly the same amount of time regardless of where and how they differ. */
+/* Regular comparison functions (memcmp, strcmp) can leak timing information. An attacker could measure how long comparisons take and gradually guess the correct password hash. This function takes the same time whether the data matches or differs completely. */
 static int const_time_cmp(const unsigned char *a, const unsigned char *b, size_t len)
 {
   unsigned char r = 0;
@@ -104,6 +106,7 @@ static int ensure_dir(const char *path)
 }
 
 /* Write buffer atomically with 0600 permissions */
+/* Creates a temporary file, writes data to it, then atomically renames it to the final name. This prevents corruption if the program crashes mid-write. The rename() operation is atomic on most filesystems, so you never have a partially-written configuration file. */
 static int write_file_atomic(const char *path, const char *data)
 {
   int fd;
