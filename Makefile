@@ -18,12 +18,12 @@
 # \\\ - Escape character for backslash in Makefile (Slightly confusing but necessary) !!Didn't Understand!!
 # -D and DB_FILE are used to define DB_FILE preprocessor macro. (shouldn't contain space)
 
-CC = gcc
 # CFLAGS = Compiler Flags
 # Warning controls: -Wall -Wextra
 # Optimization level: -O2
 # Preprocessor defines: -D...
 # Include directories: -I...
+CC = gcc
 AUTH_ETC_PATH ?= /etc/securePass/auth.conf
 DBFILE ?= /var/lib/securePass/securePass.db
 CFLAGS = -Wall -O2
@@ -51,13 +51,6 @@ all:
 install:all # Added `all` to ensure binary is built before installation.
 	install -Dm755 $(TARGET) "$(DESTDIR)/usr/bin/$(NAME)" 
 	install -Dm644 $(PAM_CONFIG) "$(DESTDIR)/etc/pam.d/$(NAME)"
-uninstall:
-	rm -f "$(DESTDIR)/usr/bin/$(TARGET)"
-	rm -f "$(DESTDIR)/etc/pam.d/$(TARGET)"
-	rm -f "$(DESTDIR)$(AUTH_ETC_PATH)"
-	rm -f "$(DESTDIR)$(DBFILE)"
-	-rmdir --ignore-fail-on-non-empty "$(DESTDIR)/etc/securePass"
-	-rmdir --ignore-fail-on-non-empty "$(DESTDIR)/var/lib/securePass"
 
 clean:
 	rm -f $(TARGET)

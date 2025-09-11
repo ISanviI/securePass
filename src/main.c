@@ -7,8 +7,8 @@
 #include "storage.h"
 
 /* Default paths; these will be overwritten by the compiled constants or you may pass alt paths */
-#ifndef ETC_AUTH_PATH
-#define ETC_AUTH_PATH AUTH_ETC_PATH
+#ifndef AUTH_ETC_PATH
+#define AUTH_ETC_PATH "/etc/securePass/auth.conf"
 #endif
 
 static void usage(const char *prog)
@@ -19,7 +19,7 @@ static void usage(const char *prog)
   printf("  verify                    Verifies the master passphrase.\n");
   printf("  add <name>                Adds a new password entry interactively.\n");
   printf("  display <name>|all        Displays a specific password or lists all entry names.\n");
-  // printf("\nPaths (compiled values):\n  auth.conf: %s\n", ETC_AUTH_PATH);
+  // printf("\nPaths (compiled values):\n  auth.conf: %s\n", AUTH_ETC_PATH);
 }
 
 int main(int argc, char *argv[])
@@ -40,11 +40,11 @@ int main(int argc, char *argv[])
 
   if (strcmp(cmd, "init") == 0)
   {
-    return cmd_init(ETC_AUTH_PATH);
+    return cmd_init(AUTH_ETC_PATH);
   }
   else if (strcmp(cmd, "verify") == 0)
   {
-    return cmd_verify(ETC_AUTH_PATH);
+    return cmd_verify(AUTH_ETC_PATH);
   }
   else if (strcmp(cmd, "add") == 0)
   {

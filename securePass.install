@@ -9,3 +9,8 @@ post_install() {
   echo "Notice:"
   echo "==> If you uninstall this package, all the stored passwords will also be deleted."
 }
+
+pre_remove() {
+  echo "Note that if uninstalling this package would also delete all the stored passwords."
+  echo "Cleaning up before package removal..."
+}

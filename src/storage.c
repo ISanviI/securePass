@@ -1,5 +1,6 @@
 // src/storage.c
 #include <stdio.h>
+#include <sys/stat.h>
 #include <string.h>
 #include <stdlib.h>
 #include "storage.h"
@@ -17,12 +18,28 @@
 #define AES_TAG_LEN 16
 
 // Helper to calculate decoded/encoded size for Base64
-static size_t b64_decoded_size(const char *in) {
+static int b64_decoded_size(const char *in) {
     size_t len = strlen(in);
     size_t padding = 0;
     if (len > 1 && in[len - 1] == '=') padding++;
     if (len > 2 && in[len - 2] == '=') padding++;
     return (len * 3) / 4 - padding;
+}
+
+/* Ensure dir exists with 0700. Returns 0 on success. */
+static int ensure_dir(const char *path)
+{
+  struct stat st;
+  if (stat(path, &st) == 0)
+  {
+    if (!S_ISDIR(st.st_mode))
+      return -1;
+    chmod(path, S_IRWXU);
+    return 0;
+  }
+  if (mkdir(path, S_IRWXU) == 0)
+    return 0;
+  return -1;
 }
 
 static int b64_decode(const char *in, unsigned char *out, size_t *outlen) {
@@ -90,6 +107,21 @@ void save_password(const char *name, const char *password, const char *master_pa
     char *encoded_data = b64_encode(combined, total_len);
 
     // 6. Save to file
+    char db_dir[4096];
+    strncpy(db_dir, DB_FILE, sizeof(db_dir));
+    db_dir[sizeof(db_dir) - 1] = '\0';
+    char *last = strrchr(db_dir, '/');
+    if (last) {
+        *last = '\0';
+        if (ensure_dir(db_dir) != 0) {
+            fprintf(stderr, "Error: Failed to create database directory: %s\n", db_dir);
+            perror("ensure_dir");
+            OPENSSL_cleanse(key, sizeof(key));
+            free(ciphertext);
+            return;
+        }
+    }
+
     FILE *file = fopen(DB_FILE, "a");
     if (!file) {
         perror("fopen");

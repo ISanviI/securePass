@@ -14,15 +14,10 @@ depends=('pam' 'argon2' 'openssl')
 makedepends=('git' 'gcc')
 provides=("$pkgname")
 conflicts=("$pkgname")
-install=$pkgname.install
-source=("$pkgname-$pkgver::https://raw.githubusercontent.com/ISanviI/securePass/main/bin/securePass")
+install=${pkgname}.install
+source=("$pkgname-$pkgver.tar.gz::https://github.com/ISanviI/securePass/archive/refs/tags/v$pkgver.tar.gz")
 noextract=("$pkgname-$pkgver")
 sha256sums=('SKIP')
-
-pkgver() {
-  cd "$pkgname"
-  printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
-}
 
 build() {
   cd "$srcdir/$pkgname-$pkgver"

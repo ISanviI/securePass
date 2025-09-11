@@ -4,7 +4,9 @@
 
 #include <stddef.h>
 
+#ifndef AUTH_ETC_PATH
 #define AUTH_ETC_PATH "/etc/securePass/auth.conf"
+#endif
 
 /* Argon2id parameters for key derivation. */
 #define KDF_T_COST 2
