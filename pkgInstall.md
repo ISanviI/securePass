@@ -1,11 +1,21 @@
 # `pacman` vs `yay` — How They Work (for Arch)
 
+> These PKGBUILDs can be built into installable packages using makepkg, then installed using pacman.
+
+### "makepkg" is the official Arch tool that:
+
+- Reads PKGBUILD
+- Creates a clean build environment
+- Compiles project
+- Installs the files into a temporary $pkgdir (DESTDIR)
+- Packages everything into a `.pkg.tar.zst` file (Arch installable format) (AUR - Arch User Repository), to let `pacman` track it.
+
 ### pacman
 
 Official package manager for Arch Linux.  
 Installs precompiled, signed packages from Arch’s official repositories.  
-Commands like pacman -S pkgname only pull from repos listed in /etc/pacman.conf (maintained by Arch developers & Trusted Users).  
-Can also install any local package file (.pkg.tar.zst) via pacman -U file, even if it’s not in the official repos.
+Commands like `pacman -S pkgname` only pull from repos listed in `/etc/pacman.conf` (maintained by Arch developers & Trusted Users).  
+Can also install any local package file (`.pkg.tar.zst`) via `pacman -U` file, even if it’s not in the official repos.
 
 ### yay
 
@@ -15,7 +25,7 @@ For AUR packages, it:
 
 - Downloads the PKGBUILD from the AUR (a Git repo of build scripts).
 - Builds the package locally using makepkg.
-- Installs it via pacman -U.
+- Installs it via `pacman -U`.
 
 ### AUR (Arch User Repository)
 

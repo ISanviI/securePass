@@ -95,7 +95,7 @@ Used for -> Password hashing (with salt); File/Data integrity checks; Digital si
 - Store an Argon2id hash of their passphrase (this is irreversible).
 - During login, you run Argon2id again with their entered passphrase, compare to stored hash for authorization.
 
-2. Passphrase to unlock AES encryption:
+2. Passphrase to unlock AES encryption (Our Method):
 
 - Use Argon2id as a Key Derivation Function (KDF):
 - Input: user passphrase + random salt
@@ -103,4 +103,11 @@ Used for -> Password hashing (with salt); File/Data integrity checks; Digital si
 - Encrypt the database with AES-256-GCM.
 - Store alongside the ciphertext:
 
-Our method --> AES-256-GCM
+Argon2id is used to get verify the stored hash with the hash generated from stored salt and user master passphrase/password.
+For every display of stored password the master passphrase along with salt stored alongside that password, in base64 decoded password row, is used to generate an AES key using Argon2id as KDF, The key is then used to verify the Cipher text credibility using the GCM text and if true, the password is decrypted and returned.
+
+> Both getpass() and the password prompt used by PAM/sudo work by temporarily changing the settings of the terminal. On Linux and other Unix-like systems, this is done using the termios interface. They essentially tell the terminal:
+>
+> - "Turn off character echoing (ECHO)."
+> - Read the user's input line.
+> - "Turn character echoing back on."

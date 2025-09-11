@@ -1,0 +1,11 @@
+post_install() {
+	echo "Security Warning:"
+  echo "==> This password manager requires you to type your master passphrase."
+  echo "==> Its security depends on the security of your operating system."
+  echo "==> Ensure your system is not compromised with keyloggers or other monitoring tools."
+  echo "Tips:"
+	echo "==> Use master passphrase different from your shell password."
+	echo "==> Keep your master passphrase secure and do not share it with anyone."
+  echo "Notice:"
+  echo "==> If you uninstall this package, all the stored passwords will also be deleted."
+}

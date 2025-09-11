@@ -138,7 +138,7 @@ static int write_file_atomic(const char *path, const char *data)
 }
 
 /* Create JSON-like auth.conf in etc_path with Argon2 verification data */
-int cmd_init(const char *etc_path, const char *kdf_path)
+int cmd_init(const char *etc_path)
 {
   const size_t salt_len = 16;
   const size_t hash_len = 32; /* Argon2 raw output length */
@@ -177,6 +177,7 @@ int cmd_init(const char *etc_path, const char *kdf_path)
   /* Prepare etc dir and file path */
   char etc_dir[PATH_MAX];
   strncpy(etc_dir, etc_path, sizeof(etc_dir));
+  etc_dir[sizeof(etc_dir) - 1] = '\0';
   /* etc_path expected to be something like "$(DESTDIR)/etc/securePass/auth.conf" */
   /* We want to ensure directory exists */
   char *last = strrchr(etc_dir, '/');
@@ -207,51 +208,7 @@ int cmd_init(const char *etc_path, const char *kdf_path)
     return 1;
   }
 
-  /* ------- Now create KDF metadata under kdf_path ------- */
-  /* kdf salt separate from verification salt (recommended) */
-  unsigned char kdf_salt[salt_len];
-  if (RAND_bytes(kdf_salt, salt_len) != 1)
-  {
-    fprintf(stderr, "RAND_bytes failed (kdf)\n");
-    return 1;
-  }
-  char kdf_salt_hex[salt_len * 2 + 1];
-  hex_encode(kdf_salt, salt_len, kdf_salt_hex);
-
-  /* Create kdf dir */
-  char kdf_dir[PATH_MAX];
-  strncpy(kdf_dir, kdf_path, sizeof(kdf_dir));
-  char *lk = strrchr(kdf_dir, '/');
-  if (!lk)
-    return 1;
-  *lk = '\0';
-  ensure_dir(kdf_dir);
-
-  /* Use slightly different Argon2 params for KDF if desired */
-  uint32_t kdf_t = 2;
-  uint32_t kdf_m = 1 << 15; /* 32768 KiB */
-  uint32_t kdf_p = 1;
-  char kdf_content[512];
-  snprintf(kdf_content, sizeof(kdf_content),
-           "{\n"
-           "  \"kdf\": {\n"
-           "    \"time_cost\": %u,\n"
-           "    \"memory_cost\": %u,\n"
-           "    \"parallelism\": %u,\n"
-           "    \"salt_hex\": \"%s\",\n"
-           "    \"key_len\": %u\n"
-           "  }\n"
-           "}\n",
-           (unsigned)kdf_t, (unsigned)kdf_m, (unsigned)kdf_p,
-           kdf_salt_hex, (unsigned)32);
-
-  if (write_file_atomic(kdf_path, kdf_content) != 0)
-  {
-    perror("write_file_atomic kdf");
-    return 1;
-  }
-
-  printf("Initialization complete.\nVerification metadata written to: %s\nKDF metadata written to: %s\n", etc_path, kdf_path);
+  printf("Initialization complete.\nVerification metadata written to: %s\n", etc_path);
   return 0;
 }
 
@@ -317,9 +274,8 @@ static int read_whole_file(const char *path, char **buf_out)
   return 0;
 }
 
-int cmd_verify(const char *etc_path, const char *kdf_path)
+int cmd_verify(const char *etc_path)
 {
-  (void)kdf_path; /* not used here but kept for signature parity */
 
   char *content = NULL;
   if (read_whole_file(etc_path, &content) != 0)
@@ -402,72 +358,15 @@ int cmd_verify(const char *etc_path, const char *kdf_path)
   return ok ? 0 : 2;
 }
 
-int cmd_derive_key(const char *kdf_path)
+int derive_key(const char *pass, const unsigned char *salt, unsigned char *key, size_t key_len)
 {
-  char *content = NULL;
-  if (read_whole_file(kdf_path, &content) != 0)
-  {
-    fprintf(stderr, "Failed to read %s\n", kdf_path);
-    return 1;
-  }
-  char salt_hex[256];
-  unsigned t = 0, m = 0, p = 0, key_len = 0;
-  if (extract_field_hex(content, "salt_hex", salt_hex, sizeof(salt_hex)) != 0 ||
-      extract_field_uint(content, "time_cost", &t) != 0 ||
-      extract_field_uint(content, "memory_cost", &m) != 0 ||
-      extract_field_uint(content, "parallelism", &p) != 0 ||
-      extract_field_uint(content, "key_len", &key_len) != 0)
-  {
-    fprintf(stderr, "Failed to parse %s\n", kdf_path);
-    free(content);
-    return 1;
-  }
-
-  size_t salt_len = strlen(salt_hex) / 2;
-  unsigned char *salt = malloc(salt_len);
-  if (!salt)
-  {
-    free(content);
-    return 1;
-  }
-  if (hex_decode(salt_hex, salt, salt_len) != 0)
-  {
-    fprintf(stderr, "hex decode failed\n");
-    free(content);
-    free(salt);
-    return 1;
-  }
-
-  char *pass = getpass("Enter passphrase to derive key: ");
-  if (!pass)
-  {
-    free(content);
-    free(salt);
-    return 1;
-  }
-
-  unsigned char key[key_len];
-  if (argon2id_hash_raw((uint32_t)t, (uint32_t)m, (uint32_t)p,
+  if (argon2id_hash_raw(KDF_T_COST, KDF_M_COST, KDF_PARALLELISM,
                         pass, strlen(pass),
-                        salt, salt_len,
+                        salt, KDF_SALT_LEN,
                         key, key_len) != ARGON2_OK)
   {
     fprintf(stderr, "argon2id_hash_raw (kdf) failed\n");
-    free(content);
-    free(salt);
     return 1;
   }
-
-  /* Output key in hex for demo — don't do this in production. */
-  char key_hex[key_len * 2 + 1];
-  hex_encode(key, key_len, key_hex);
-  printf("Derived AES-256 key (hex): %s\n", key_hex);
-
-  /* zero sensitive buffers */
-  OPENSSL_cleanse(key, key_len);
-  OPENSSL_cleanse(pass, strlen(pass));
-
-  free(content);
-  free(salt);
   return 0;
 }
