@@ -1,0 +1,335 @@
+// src/crypto.c
+
+#define _GNU_SOURCE
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <limits.h> // For PATH_MAX
+
+#include <openssl/rand.h>
+#include <openssl/evp.h>
+#include <argon2.h>
+
+#include "auth.h" // For KDF parameters
+#include "crypto.h"
+
+/* Convert binary cryptographic data (like salts and hashes) to/from human-readable hex strings for storage in configuration files. */
+static void hex_encode(const unsigned char *in, size_t len, char *out)
+{
+  static const char hex[] = "0123456789abcdef";
+  for (size_t i = 0; i < len; ++i)
+  {
+    out[i * 2] = hex[(in[i] >> 4) & 0xF];
+    out[i * 2 + 1] = hex[in[i] & 0xF];
+  }
+  out[len * 2] = '\0';
+}
+
+static int hex_decode(const char *hexstr, unsigned char *out, size_t outlen)
+{
+  size_t hexlen = strlen(hexstr);
+  if (hexlen != outlen * 2)
+    return -1;
+  for (size_t i = 0; i < outlen; ++i)
+  {
+    char a = hexstr[i * 2], b = hexstr[i * 2 + 1];
+    int va = (a >= '0' && a <= '9') ? a - '0' : (a >= 'a' && a <= 'f') ? a - 'a' + 10
+                                            : (a >= 'A' && a <= 'F')   ? a - 'A' + 10
+                                                                       : -1;
+    int vb = (b >= '0' && b <= '9') ? b - '0' : (b >= 'a' && b <= 'f') ? b - 'a' + 10
+                                            : (b >= 'A' && a <= 'F')   ? a - 'A' + 10
+                                                                       : -1;
+    if (va < 0 || vb < 0)
+      return -1;
+    out[i] = (unsigned char)((va << 4) | vb);
+  }
+  return 0;
+}
+
+/* Compares two byte arrays in exactly the same amount of time regardless of where and how they differ. */
+static int const_time_cmp(const unsigned char *a, const unsigned char *b, size_t len)
+{
+  unsigned char r = 0;
+  for (size_t i = 0; i < len; ++i)
+    r |= a[i] ^ b[i];
+  return r == 0;
+}
+
+/* Ensure dir exists with 0700. Returns 0 on success. */
+static int ensure_dir(const char *path)
+{
+  struct stat st;
+  if (stat(path, &st) == 0)
+  {
+    if (!S_ISDIR(st.st_mode))
+      return -1;
+    chmod(path, S_IRWXU);
+    return 0;
+  }
+  if (mkdir(path, S_IRWXU) == 0)
+    return 0;
+  return -1;
+}
+
+/* Write buffer atomically with 0600 permissions */
+static int write_file_atomic(const char *path, const char *data)
+{
+  int fd;
+  char tmp[PATH_MAX];
+  snprintf(tmp, sizeof(tmp), "%s.tmpXXXXXX", path);
+  fd = mkstemp(tmp);
+  if (fd < 0)
+    return -1;
+  ssize_t w = write(fd, data, strlen(data));
+  if (w < 0 || (size_t)w != strlen(data))
+  {
+    close(fd);
+    unlink(tmp);
+    return -1;
+  }
+  fsync(fd);
+  close(fd);
+  if (chmod(tmp, S_IRUSR | S_IWUSR) != 0)
+  {
+    unlink(tmp);
+    return -1;
+  }
+  if (rename(tmp, path) != 0)
+  {
+    unlink(tmp);
+    return -1;
+  }
+  return 0;
+}
+
+/* Create JSON-like auth.conf in etc_path with Argon2 verification data */
+int cmd_init(const char *etc_path)
+{
+  const size_t salt_len = 16;
+  const size_t hash_len = 32; /* Argon2 raw output length */
+  unsigned char salt[salt_len];
+  unsigned char raw[hash_len];
+
+  uint32_t t_cost = 3;
+  uint32_t m_cost = 1 << 16; /* 65536 KiB ~ 64 MiB */
+  uint32_t parallelism = 1;
+
+  if (RAND_bytes(salt, salt_len) != 1)
+  {
+    fprintf(stderr, "RAND_bytes failed\n");
+    return 1;
+  }
+
+  char *pass = getpass("Enter new passphrase: ");
+  if (!pass)
+    return 1;
+
+  /* Hash for verification */
+  if (argon2id_hash_raw(t_cost, m_cost, parallelism,
+                        pass, strlen(pass),
+                        salt, salt_len,
+                        raw, hash_len) != ARGON2_OK)
+  {
+    fprintf(stderr, "argon2id_hash_raw failed\n");
+    return 1;
+  }
+
+  char salt_hex[salt_len * 2 + 1];
+  char raw_hex[hash_len * 2 + 1];
+  hex_encode(salt, salt_len, salt_hex);
+  hex_encode(raw, hash_len, raw_hex);
+
+  char etc_dir[PATH_MAX];
+  strncpy(etc_dir, etc_path, sizeof(etc_dir));
+  etc_dir[sizeof(etc_dir) - 1] = '\0';
+  char *last = strrchr(etc_dir, '/');
+  if (!last)
+    return 1;
+  *last = '\0';
+  ensure_dir(etc_dir);
+
+  char content[4096];
+  snprintf(content, sizeof(content),
+           "{\n"
+           "  \"argon2\": {\n"
+           "    \"time_cost\": %u,\n"
+           "    \"memory_cost\": %u,\n"
+           "    \"parallelism\": %u,\n"
+           "    \"salt_hex\": \"%s\",\n"
+           "    \"raw_hash_hex\": \"%s\",\n"
+           "    \"hash_len\": %u\n"
+           "  }\n"
+           "}\n",
+           (unsigned)t_cost, (unsigned)m_cost, (unsigned)parallelism,
+           salt_hex, raw_hex, (unsigned)hash_len);
+
+  if (write_file_atomic(etc_path, content) != 0)
+  {
+    perror("write_file_atomic etc");
+    return 1;
+  }
+
+  printf("Initialization complete.\nVerification metadata written to: %s\n", etc_path);
+  return 0;
+}
+
+/* Very tiny parser to extract values from the simple files we wrote above. */
+static int extract_field_hex(const char *content, const char *field, char *out, size_t outlen)
+{
+  const char *p = strstr(content, field);
+  if (!p)
+    return -1;
+  p = strchr(p, ':');
+  if (!p)
+    return -1;
+  p++;
+  while (*p == ' ' || *p == '"')
+    p++;
+  size_t i = 0;
+  while (*p && *p != '"' && *p != '\n' && i + 1 < outlen)
+  {
+    out[i++] = *p++;
+  }
+  out[i] = '\0';
+  return 0;
+}
+static int extract_field_uint(const char *content, const char *field, unsigned *out)
+{
+  const char *p = strstr(content, field);
+  if (!p)
+    return -1;
+  p = strchr(p, ':');
+  if (!p)
+    return -1;
+  p++;
+  while (*p == ' ')
+    p++;
+  *out = strtoul(p, NULL, 10);
+  return 0;
+}
+
+static int read_whole_file(const char *path, char **buf_out)
+{
+  FILE *f = fopen(path, "rb");
+  if (!f)
+    return -1;
+  fseek(f, 0, SEEK_END);
+  long sz = ftell(f);
+  fseek(f, 0, SEEK_SET);
+  char *buf = malloc(sz + 1);
+  if (!buf)
+  {
+    fclose(f);
+    return -1;
+  }
+  if (fread(buf, 1, sz, f) != (size_t)sz)
+  {
+    free(buf);
+    fclose(f);
+    return -1;
+  }
+  buf[sz] = '\0';
+  fclose(f);
+  *buf_out = buf;
+  return 0;
+}
+
+int cmd_verify(const char *etc_path)
+{
+  char *content = NULL;
+  if (read_whole_file(etc_path, &content) != 0)
+  {
+    fprintf(stderr, "Failed to read %s\n", etc_path);
+    return 1;
+  }
+
+  char salt_hex[256];
+  char raw_hex[1024];
+  unsigned time_cost = 0, memory_cost = 0, parallelism = 0;
+  unsigned hash_len = 0;
+
+  if (extract_field_hex(content, "salt_hex", salt_hex, sizeof(salt_hex)) != 0 ||
+      extract_field_hex(content, "raw_hash_hex", raw_hex, sizeof(raw_hex)) != 0 ||
+      extract_field_uint(content, "time_cost", &time_cost) != 0 ||
+      extract_field_uint(content, "memory_cost", &memory_cost) != 0 ||
+      extract_field_uint(content, "parallelism", &parallelism) != 0 ||
+      extract_field_uint(content, "hash_len", &hash_len) != 0)
+  {
+    fprintf(stderr, "Failed to parse %s\n", etc_path);
+    free(content);
+    return 1;
+  }
+
+  size_t salt_len = strlen(salt_hex) / 2;
+  size_t raw_len = strlen(raw_hex) / 2;
+  unsigned char *salt = malloc(salt_len);
+  unsigned char *stored_raw = malloc(raw_len);
+  if (!salt || !stored_raw)
+  {
+    free(content);
+    return 1;
+  }
+  if (hex_decode(salt_hex, salt, salt_len) != 0 ||
+      hex_decode(raw_hex, stored_raw, raw_len) != 0)
+  {
+    fprintf(stderr, "hex decode failed\n");
+    free(content);
+    free(salt);
+    free(stored_raw);
+    return 1;
+  }
+
+  char *pass = getpass("Enter passphrase to verify: ");
+  if (!pass)
+  {
+    free(content);
+    free(salt);
+    free(stored_raw);
+    return 1;
+  }
+
+  unsigned char raw[raw_len];
+  if (argon2id_hash_raw((uint32_t)time_cost, (uint32_t)memory_cost, (uint32_t)parallelism,
+                        pass, strlen(pass),
+                        salt, salt_len,
+                        raw, raw_len) != ARGON2_OK)
+  {
+    fprintf(stderr, "argon2id_hash_raw failed\n");
+    free(content);
+    free(salt);
+    free(stored_raw);
+    return 1;
+  }
+
+  int ok = const_time_cmp(raw, stored_raw, raw_len);
+  if (ok)
+  {
+    printf("Passphrase OK \u2705\n");
+  }
+  else
+  {
+    printf("Passphrase INCORRECT \u274C\n");
+  }
+
+  free(content);
+  free(salt);
+  free(stored_raw);
+  return ok ? 0 : 2;
+}
+
+int derive_key(const char *pass, const unsigned char *salt, unsigned char *key, size_t key_len)
+{
+  if (argon2id_hash_raw(KDF_T_COST, KDF_M_COST, KDF_PARALLELISM,
+                        pass, strlen(pass),
+                        salt, KDF_SALT_LEN,
+                        key, key_len) != ARGON2_OK)
+  {
+    fprintf(stderr, "argon2id_hash_raw (kdf) failed\n");
+    return 1;
+  }
+  return 0;
+}

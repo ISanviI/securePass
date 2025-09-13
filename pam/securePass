@@ -1,2 +1,6 @@
-auth       required     pam_unix.so
-account    required     pam_unix.so
+#%PAM-1.0
+# This file provides a minimal PAM configuration for the securePass application.
+# It directly uses the pam_unix.so module to check the user's standard system password.
+
+auth      required  pam_unix.so
+account   required  pam_unix.so

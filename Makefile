@@ -12,8 +12,11 @@
 
 # Current make command - 
 # 	Testing ---> make install DESTDIR=/tmp/pkg CFLAGS="$(CFLAGS) -DDB_FILE=\\\"$(DESTDIR)$(DBFILE)\\\""
-# 	Installation ---> make
-# 	Execution ---> ./securePass
+# 							 make clean && make install DESTDIR="/tmp/test" CFLAGS="-Wall -O2 -DDB_FILE='\"<DESTDIR>/securePass.db\"'"
+# 							 sudo ln -s <DESTDIR>/etc/pam.d/securePass /etc/pam.d/securePass (To create a symbolic link for testing)
+# 							 sudo rm /etc/pam.d/securePass (To remove symlink)
+# 	Installation ---> make install
+# 	Execution ---> ./securePass or securePass
 # \ - Escape character for special characters in Makefile
 # \\\ - Escape character for backslash in Makefile (Slightly confusing but necessary) !!Didn't Understand!!
 # -D and DB_FILE are used to define DB_FILE preprocessor macro. (shouldn't contain space)
@@ -28,9 +31,8 @@ AUTH_ETC_PATH ?= /etc/securePass/auth.conf
 DBFILE ?= /var/lib/securePass/securePass.db
 CFLAGS = -Wall -O2
 CFLAGS += -DDB_FILE=\"$(DBFILE)\" # Default DB_FILE if not specified during make command to override it.
-TARGET = bin/securePass
-NAME = securePass
-SRC = src/main.c src/auth.c src/storage.c
+TARGET = securePass
+SRC = src/main.c src/auth.c src/storage.c src/crypto.c
 LIBS = -lpam -lpam_misc -largon2 -lcrypto
 PAM_CONFIG = pam/securePass
 
@@ -49,8 +51,8 @@ all:
 # `all` command only builds the binary file (default).
 # `install` command installs the binary file and the PAM configuration file to their respective directories, not the whole project unless specified.
 install:all # Added `all` to ensure binary is built before installation.
-	install -Dm755 $(TARGET) "$(DESTDIR)/usr/bin/$(NAME)" 
-	install -Dm644 $(PAM_CONFIG) "$(DESTDIR)/etc/pam.d/$(NAME)"
+	install -Dm755 $(TARGET) "$(DESTDIR)/usr/bin/$(TARGET)" 
+	install -Dm644 $(PAM_CONFIG) "$(DESTDIR)/etc/pam.d/$(TARGET)"
 
 clean:
 	rm -f $(TARGET)

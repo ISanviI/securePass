@@ -4,7 +4,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "storage.h"
-#include "auth.h"
+#include "crypto.h"
 
 #include <openssl/evp.h>
 #include <openssl/rand.h>

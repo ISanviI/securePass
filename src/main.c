@@ -4,6 +4,7 @@
 #include <unistd.h> // For getpass
 #include <openssl/crypto.h> // For OPENSSL_cleanse
 #include "auth.h"
+#include "crypto.h"
 #include "storage.h"
 
 /* Default paths; these will be overwritten by the compiled constants or you may pass alt paths */
@@ -30,9 +31,12 @@ int main(int argc, char *argv[])
     return 1;
   }
 
-  if (!authenticate())
+  fprintf(stderr, "[MAIN_LOG] Calling authenticate()...\n");
+  int auth_result = authenticate();
+  fprintf(stderr, "[MAIN_LOG] authenticate() returned: %d\n", auth_result);
+  if (!auth_result)
   {
-    fprintf(stderr, "Authentication failed.\n");
+    fprintf(stderr, "[MAIN_LOG] Authentication failed. Exiting.\n");
     return 1;
   }
 
